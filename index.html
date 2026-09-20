@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5">
+<title>行程地图 · 归档</title>
+<style>
+:root{--bg:#12161c;--card:#1b212b;--line:#2a323e;--text:#e8ecf1;--dim:#9aa5b1;--accent:#6ea8fe;
+--ok:#7fd39a;--warn:#e8c07a;--done:#6b7a8c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;line-height:1.6;-webkit-text-size-adjust:100%}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+header{padding:16px 0 8px;border-bottom:1px solid var(--line);margin-bottom:18px}
+h1{margin:6px 0;font-size:24px}
+h2{font-size:15px;margin:28px 0 12px;color:var(--accent);display:flex;align-items:center;gap:8px}
+h2 .cnt{color:var(--dim);font-weight:400;font-size:12px}
+.sub{color:var(--dim);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:8px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat .n{font-size:22px;font-weight:600}.stat .l{color:var(--dim);font-size:12px}
+.pick{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px;color:var(--text);text-decoration:none;transition:border-color .15s}
+.pick:hover{border-color:var(--accent)}
+.pick.draft{cursor:default;opacity:.72}
+.pick.draft:hover{border-color:var(--line)}
+.pick .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pick .t{font-size:17px;font-weight:600}
+.badge{display:inline-block;background:#222b36;border:1px solid var(--line);color:var(--dim);border-radius:999px;padding:2px 10px;font-size:11px;white-space:nowrap}
+.badge.up{color:var(--accent);border-color:rgba(110,168,254,.4)}
+.badge.on{color:var(--ok);border-color:rgba(127,211,154,.4)}
+.badge.done{color:var(--done);border-color:var(--line)}
+.badge.draft{color:var(--warn);border-color:rgba(232,192,122,.4)}
+.pick .s{color:var(--dim);font-size:13px;margin-top:8px}
+.pick .rt{color:var(--dim);font-size:12.5px;margin-top:4px}
+.tags{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
+.tag{background:rgba(110,168,254,.1);color:var(--accent);border:1px solid rgba(110,168,254,.25);border-radius:6px;padding:1px 8px;font-size:11px}
+.empty{color:var(--dim);font-size:13px;padding:20px 0;text-align:center;border:1px dashed var(--line);border-radius:12px}
+footer{color:var(--dim);font-size:12px;text-align:center;padding:28px 0 40px}
+footer a{color:var(--accent);text-decoration:none}
+</style></head><body><div class="wrap">
+
+<header>
+  <h1>行程地图 · 归档</h1>
+  <div class="sub">每次出行的「行程 + 地图」静态站点都归档在这里，点卡片直接打开对应行程。</div>
+</header>
+
+<div class="grid" id="stats"></div>
+
+<div id="sections"></div>
+
+<footer>
+  数据来自 <code>data/trips.js</code>，新增行程见该文件顶部注释 · 由 <code>trip-itinerary-map-planner</code> Skill 生成与维护
+</footer>
+
+</div>
+<script src="data/trips.js"></script>
+<script>
+const TRIPS = window.TRIPS || [];
+const todayStr = new Date().toISOString().slice(0,10);
+
+function dayDiff(a, b){ return Math.round((new Date(a) - new Date(b)) / 86400000); }
+
+function classify(t){
+  if (t.status === "draft" || !t.start) return "draft";
+  if (todayStr < t.start) return "upcoming";
+  if (t.end && todayStr > t.end) return "done";
+  return "ongoing";
+}
+
+function fmtRange(t){
+  if (!t.start) return "日期待定";
+  return t.end && t.end !== t.start ? (t.start + " → " + t.end) : t.start;
+}
+
+function statusLine(t, kind){
+  if (kind === "draft") return {badge: "规划中", cls: "draft", note: "行程细节还在整理，暂无可打开的站点"};
+  if (kind === "upcoming"){
+    const d = dayDiff(t.start, todayStr);
+    return {badge: "即将出发", cls: "up", note: "还有 " + d + " 天出发"};
+  }
+  if (kind === "ongoing"){
+    const total = dayDiff(t.end, t.start) + 1;
+    const cur = dayDiff(todayStr, t.start) + 1;
+    return {badge: "进行中", cls: "on", note: "第 " + cur + " / " + total + " 天"};
+  }
+  const d = dayDiff(todayStr, t.end);
+  return {badge: "已结束", cls: "done", note: d <= 0 ? "刚结束" : d + " 天前结束"};
+}
+
+function card(t){
+  const kind = classify(t);
+  const st = statusLine(t, kind);
+  const tags = (t.tags||[]).map(x => '<span class="tag">' + x + '</span>').join("");
+  const inner =
+    '<div class="top"><div class="t">' + t.title + '</div><span class="badge ' + st.cls + '">' + st.badge + '</span></div>' +
+    '<div class="s">' + fmtRange(t) + (t.summary ? " · " + t.summary : "") + ' · ' + st.note + '</div>' +
+    (t.route ? '<div class="rt">' + t.route + '</div>' : '') +
+    (tags ? '<div class="tags">' + tags + '</div>' : '');
+  if (kind === "draft" || !t.href){
+    return '<div class="pick draft">' + inner + '</div>';
+  }
+  return '<a class="pick" href="' + t.href + '">' + inner + '</a>';
+}
+
+const groups = {upcoming: [], ongoing: [], done: [], draft: []};
+TRIPS.forEach(t => groups[classify(t)].push(t));
+groups.upcoming.sort((a,b) => a.start.localeCompare(b.start));
+groups.ongoing.sort((a,b) => a.start.localeCompare(b.start));
+groups.done.sort((a,b) => b.start.localeCompare(a.start));
+groups.draft.sort((a,b) => (a.title||"").localeCompare(b.title||""));
+
+document.getElementById("stats").innerHTML = [
+  ["总行程", TRIPS.length],
+  ["进行中", groups.ongoing.length],
+  ["即将出发", groups.upcoming.length],
+  ["已结束", groups.done.length]
+].map(([l,n]) => '<div class="stat"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>').join("");
+
+const sectionDefs = [
+  ["ongoing", "进行中"],
+  ["upcoming", "即将出发"],
+  ["draft", "规划中"],
+  ["done", "已结束"]
+];
+const secHtml = sectionDefs
+  .filter(([k]) => groups[k].length)
+  .map(([k, label]) =>
+    '<h2>' + label + '<span class="cnt">' + groups[k].length + '</span></h2>' +
+    groups[k].map(card).join("")
+  ).join("");
+
+document.getElementById("sections").innerHTML = secHtml || '<div class="empty">还没有行程，去 Obsidian 里用 Skill 生成第一个吧</div>';
+</script>
+</body></html>
