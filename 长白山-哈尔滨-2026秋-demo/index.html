@@ -248,23 +248,48 @@ function drawSeg(lg,a,b,col){
   L.marker(q,{icon:svgMark(a,b,TRI,col,CASE,3.2),interactive:false,keyboard:false}).addTo(lg);
   L.marker(q,{icon:svgMark(a,b,TRI,col,col,1),interactive:false,keyboard:false}).addTo(lg);
 }
+function routeLabel(r){
+  const icon = r.kind==="flight" ? "&#9992;" : (r.kind==="bus" ? "&#128652;" : "&#128646;");
+  let txt = r.time ? icon+" "+r.time : icon;
+  if(r.price) txt += " · "+r.price+(r.price_state?"（"+r.price_state+"）":"");
+  if(r.pending) txt += "（"+r.pending+"）";
+  return txt;
+}
 (function(){
-  // ITIN.origin 可选：行程"第 0 天"（出发前）所在城市 key，用来给第一天的箭头一个起点。
-  // 不设置的话第一天永远不会画城际箭头（因为没有"上一天"可比较）。
-  let prev=ITIN.origin||null;
+  // ---------- 城际箭头：优先用显式 ITIN.routes（出发点→到达点自己指定，跟 days[].city 完全解耦）----------
+  const ROUTES = Array.isArray(ITIN.routes) ? ITIN.routes : null;
+  if(ROUTES){
+    ROUTES.forEach(function(r){
+      const a=cityPos[r.from], b=cityPos[r.to];
+      if(!a || !b) return;
+      const col=dayColor(r.date);
+      const lg=L.layerGroup();
+      drawSeg(lg,a,b,col);
+      L.marker(along(a,b,.28),{icon:L.divIcon({className:"",iconSize:[0,0],
+        html:'<div class="arlab">'+routeLabel(r)+"</div>"}),interactive:false,keyboard:false}).addTo(lg);
+      lg.addTo(cityArr);
+    });
+  }else{
+    // ---------- 兼容旧数据：没有 ITIN.routes 时，退回"相邻两天 city 变化即画线"的隐式判断 ----------
+    // ITIN.origin 可选：行程"第 0 天"（出发前）所在城市 key，用来给第一天的箭头一个起点；
+    // 末日返程同理需要把当天 city 设为终点城市才画得出线——这两个坑正是新增 ITIN.routes 要绕开的。
+    let prev=ITIN.origin||null;
+    DAYS.forEach(function(d){
+      const col=dayColor(d.date);
+      if(prev && d.city!==prev && cityPos[prev] && cityPos[d.city]){
+        const a=cityPos[prev], b=cityPos[d.city], t=d.train||d.flight||{}, lg=L.layerGroup();
+        drawSeg(lg,a,b,col);
+        L.marker(along(a,b,.28),{icon:L.divIcon({className:"",iconSize:[0,0],
+          html:'<div class="arlab">'+routeLabel(Object.assign({kind:d.flight?"flight":"train"},t))+"</div>"}),
+          interactive:false,keyboard:false}).addTo(lg);
+        lg.addTo(cityArr);
+      }
+      prev=d.city;
+    });
+  }
+  // ---------- 当天往返 + 城内连线：不受 ITIN.routes 影响，始终按 DAYS 逐天计算 ----------
   DAYS.forEach(function(d){
     const col=dayColor(d.date);
-    // 城际：相邻两天城市变化即画一条（如果这天有 flight/train，标签用它的 time/price）
-    if(prev && d.city!==prev && cityPos[prev] && cityPos[d.city]){
-      const a=cityPos[prev], b=cityPos[d.city], t=d.train||d.flight||{}, lg=L.layerGroup();
-      drawSeg(lg,a,b,col);
-      const icon = d.flight ? "&#9992;" : "&#128646;";
-      let txt = t.time ? icon+" "+t.time : icon;
-      if(t.price) txt += " · "+t.price+(t.price_state?"（"+t.price_state+"）":"");
-      L.marker(along(a,b,.28),{icon:L.divIcon({className:"",iconSize:[0,0],
-        html:'<div class="arlab">'+txt+"</div>"}),interactive:false,keyboard:false}).addTo(lg);
-      lg.addTo(cityArr);
-    }
     // 当天往返（城市不变，短途外出）：move:"round" + round_to 指定另一端城市 key
     if(d.move==="round" && d.round_to && cityPos[d.city] && cityPos[d.round_to]){
       const t=d.train||d.flight||{};
@@ -288,7 +313,6 @@ function drawSeg(lg,a,b,col){
         lg2.addTo(innerArr[c]);
       }
     }
-    prev=d.city;
   });
 })();
 arrowBox.addTo(map);

@@ -21,6 +21,13 @@ window.ITIN = {
     {"key": "Shenzhen", "name": "深圳", "color": "#9aa7b5", "lat": 22.6393, "lon": 113.8107}
   ],
   "origin": "Shenzhen",
+  "routes": [
+    {"from": "Shenzhen", "to": "Shenyang", "date": "9/26", "kind": "flight", "time": "17:30–21:25", "price": "¥3,200/2人"},
+    {"from": "Shenyang", "to": "Songjianghe", "date": "9/27", "kind": "train", "time": "13:48–15:18", "price": "¥468/2人"},
+    {"from": "Songjianghe", "to": "Erdaobaihe", "date": "9/29", "kind": "bus", "time": "1.5h（110km）", "price": "¥160/2人"},
+    {"from": "Erdaobaihe", "to": "Harbin", "date": "10/2", "kind": "train", "time": "待定", "price": "待定", "price_state": "预估", "pending": "参考 D547/D551/D535/G3527"},
+    {"from": "Harbin", "to": "Shenzhen", "date": "10/3", "kind": "flight", "time": "20:15–次日00:35", "price": "¥3,292/2人"}
+  ],
   "days": [
     {
       "date": "9/26", "w": "六", "city": "Shenyang", "stay": "沈阳",
@@ -73,7 +80,7 @@ window.ITIN = {
       "train": {"no": "高铁", "dep": "长白山站(二道白河)", "arr": "哈尔滨西站", "time": "待定", "price": "待定", "price_state": "预估", "pending": "参考车次 D547/D551/D535/G3527，二等座约 ¥221–252/人，10/2 前需实际下单"}
     },
     {
-      "date": "10/3", "w": "六", "city": "Shenzhen", "stay": "—",
+      "date": "10/3", "w": "六", "city": "Harbin", "stay": "—",
       "move": "out",
       "transport": "A 观光向：09:00 伏尔加庄园半日 → 13:00 回市区午餐 → 14:30 老道外 → 17:00 出发机场｜B 轻松向：07:00 红专街早市 → 09:00 中央大街 → 12:00 退房午餐 → 14:00 太阳岛 → 17:00 出发机场 → 20:15 起飞 → 次日 00:35 抵深圳",
       "items": ["伏尔加庄园", "老道外中华巴洛克", "红专街早市", "太阳岛"],
