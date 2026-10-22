@@ -24,12 +24,14 @@ window.ITIN = {
     {"key": "Shenzhen", "name": "深圳",         "color": "#9aa7b5", "lat": 22.5179435, "lon": 114.0627302}
   ],
   "origin": "Shenzhen",
+  "start": {"place": "万宜水库东坝"},
+  "end": {"place": "屯门（何福堂）"},
   "routes": [
-    {"from": "Shenzhen", "to": "SaiKung",  "date": "11/12", "kind": "bus",   "time": "约 1–1.5h", "price": "莲塘大巴 ¥69 / 拼车 HK$200–360 每车"},
+    {"from": "Shenzhen", "to": "万宜水库东坝", "date": "11/12", "kind": "bus",   "time": "约 1–1.5h", "price": "莲塘大巴 ¥69 / 拼车 HK$200–360 每车"},
     {"from": "SaiKung",  "to": "ShaTin",   "date": "11/13", "kind": "train", "time": "徒步 23 km", "price": "—"},
     {"from": "ShaTin",   "to": "TsuenWan", "date": "11/14", "kind": "train", "time": "徒步 21 km", "price": "—"},
     {"from": "TsuenWan", "to": "TuenMun",  "date": "11/15", "kind": "train", "time": "徒步 32 km", "price": "—"},
-    {"from": "TuenMun",  "to": "Shenzhen", "date": "11/15", "kind": "bus",   "time": "B3X 20–34 分钟", "price": "HK$16.5"}
+    {"from": "屯门（何福堂）", "to": "Shenzhen", "date": "11/15", "kind": "bus",   "time": "B3X 20–34 分钟", "price": "HK$16.5"}
   ],
   "days": [
     {

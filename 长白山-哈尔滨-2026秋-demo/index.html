@@ -198,6 +198,14 @@ Object.keys(groups).forEach(function(city){
     cityPos[c.key]=[c.lat,c.lon];
   }
 });
+// 端点解析：优先把字符串当 PLACES 的 name 查（精确到景点坐标），查不到再当城市 key
+// 这样 ITIN.routes 的 from/to 既能写城市 key，也能直接写地点名，箭头可精确连到实际上下车点，
+// 不再一律连到"该城市所有地点的几何中心"。
+function posOf(ref){
+  if(!ref) return null;
+  if(N2P[ref]) return [N2P[ref].lat, N2P[ref].lon];
+  return cityPos[ref]||null;
+}
 // cityM 上面临时存了坐标，下面重新收集真正的 marker 引用用于显隐控制
 cityM.length=0;
 map.eachLayer(function(l){ if(l.getTooltip && l.getTooltip() && l.getTooltip().options.className==="clabel") cityM.push(l); });
@@ -221,8 +229,9 @@ function shift(a,b,km,side){
   return [[a[0]+n/111.32, a[1]+e/(111.32*Math.cos(mid*P))],
           [b[0]+n/111.32, b[1]+e/(111.32*Math.cos(mid*P))]];
 }
-function drawRound(lg,a,b,col,txt){
-  const o1=shift(a,b,7,1), o2=shift(a,b,7,-1);
+function drawRound(lg,a,b,col,txt,offKm){
+  const off=(typeof offKm==="number"&&offKm>0)?offKm:7;
+  const o1=shift(a,b,off,1), o2=shift(a,b,off,-1);
   drawSeg(lg,o1[0],o1[1],col);
   drawSeg(lg,o2[1],o2[0],col);
   if(txt) L.marker(along(o1[0],o1[1],.28),{icon:L.divIcon({className:"",iconSize:[0,0],
@@ -260,7 +269,7 @@ function routeLabel(r){
   const ROUTES = Array.isArray(ITIN.routes) ? ITIN.routes : null;
   if(ROUTES){
     ROUTES.forEach(function(r){
-      const a=cityPos[r.from], b=cityPos[r.to];
+      const a=posOf(r.from), b=posOf(r.to);
       if(!a || !b) return;
       const col=dayColor(r.date);
       const lg=L.layerGroup();
@@ -300,6 +309,8 @@ function routeLabel(r){
       lg.addTo(cityArr);
     }
     // 城内：当天 items 按城市分组，顺序相连
+    // PLACES[].round=true 表示该点是"原路往返"支线（典型如东坝 ↔ 破边洲）：
+    // 画成 主线锚点 ↔ 该点 的往返双箭头，主线则不从该点继续，避免箭头掉头看起来反向。
     const seq=[]; (d.items||[]).forEach(function(nm){const p=N2P[nm]; if(p) seq.push(p);});
     let i=0;
     while(i<seq.length){
@@ -308,14 +319,44 @@ function routeLabel(r){
       if(run.length>=2){
         innerArr[c]=innerArr[c]||L.layerGroup();
         const lg2=L.layerGroup();
-        for(let j=0;j<run.length-1;j++)
-          drawSeg(lg2,[run[j].lat,run[j].lon],[run[j+1].lat,run[j+1].lon],col);
+        let anchor=run[0];
+        for(let j=1;j<run.length;j++){
+          const cur=run[j], A=[anchor.lat,anchor.lon], B=[cur.lat,cur.lon];
+          if(cur.round && j+1<run.length){
+            drawRound(lg2,A,B,col,"",Math.max(0.12,kmOf(A,B)*0.06));
+            continue;
+          }
+          drawSeg(lg2,A,B,col);
+          anchor=cur;
+        }
         lg2.addTo(innerArr[c]);
       }
     }
   });
 })();
 arrowBox.addTo(map);
+
+// ---------- 起点 / 终点标记 ----------
+// 数据：ITIN.start / ITIN.end，形如 {"place":"万宜水库东坝"}，place 为 PLACES 的 name。
+// 没写就自动兜底：起点取第一天第一个 item，终点取最后一天最后一个 item；两者都取不到就不画。
+// 挂在 map 上常驻显示（不放 arrowBox，arrowBox 会被 clearLayers 清掉）。
+(function(){
+  const first=(DAYS[0]||{}).items||[], last=(DAYS[DAYS.length-1]||{}).items||[];
+  const sRef=(ITIN.start&&ITIN.start.place)||first[0]||null;
+  const eRef=(ITIN.end&&ITIN.end.place)||last[last.length-1]||null;
+  function cap(p,kind){
+    if(!p) return;
+    const isS=kind==="start", bg=isS?"#1b7a4b":"#b3541e", bd=isS?"#7ee2b0":"#f5b183";
+    L.marker([p.lat,p.lon],{icon:L.divIcon({className:"",iconSize:[28,28],iconAnchor:[14,14],
+      html:'<div style="width:28px;height:28px;border-radius:50%;background:'+bg+
+        ';border:2px solid '+bd+';color:#fff;font-size:14px;font-weight:600;'+
+        'display:flex;align-items:center;justify-content:center;'+
+        'box-shadow:0 0 0 2px rgba(0,0,0,.4)">'+(isS?"起":"终")+"</div>"}),
+      interactive:false,keyboard:false,zIndexOffset:1000}).addTo(map);
+  }
+  cap(N2P[sRef]||null,"start");
+  cap(N2P[eRef]||null,"end");
+})();
 
 // ---------- 交通点：机场 / 火车站 / 大巴站 / 相关地铁站（可选数据） ----------
 const TR=window.TRANSIT||{points:[],metro:[]};
