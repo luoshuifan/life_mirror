@@ -109,6 +109,7 @@ footer{color:var(--dim);font-size:12px;text-align:center;padding:24px 0 40px}
 <script src="data/itinerary.js"></script>
 <script src="data/transit.js"></script>
 <script src="data/hotels.js"></script>
+<script src="data/track.js"></script>
 <script src="data/version.js"></script>
 <script>
 /* ============================================================
@@ -150,8 +151,30 @@ document.getElementById("stats").innerHTML = (ITIN.stay||[]).map(function(s){
 
 // ---------- 地图底图 ----------
 const map = L.map("map").setView(ITIN.mapCenter || [35,105], ITIN.mapZoom || 5);
-L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-  {maxZoom:19,attribution:"Tiles &copy; Esri"}).addTo(map);
+const BASEMAPS={
+  "街道":L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Tiles &copy; Esri"}),
+  "地形":L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Tiles &copy; Esri"}),
+  "卫星":L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Tiles &copy; Esri"})
+};
+BASEMAPS["地形"].addTo(map);
+const TRAILS=L.tileLayer("https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png",{maxZoom:17,attribution:"Routes &copy; waymarkedtrails.org"});
+
+// ---------- 真实步道轨迹（可选数据：data/track.js → window.TRACK）----------
+// TRACK.sections[].parts[] 是一组 [[lat,lon],...] 折线，用来画步道真实走向，
+// 与"地点之间连直线"的行程箭头互补：箭头看行程安排，轨迹看实际路径形状。
+const trackLayer=L.layerGroup();
+(function(){
+  const T=window.TRACK||{};
+  (T.sections||[]).forEach(function(s){
+    (s.parts||[]).forEach(function(coords){
+      if(!coords||coords.length<2) return;
+      L.polyline(coords,{color:"#ffffff",weight:6,opacity:.55,interactive:false}).addTo(trackLayer);
+      L.polyline(coords,{color:"#ff8c42",weight:2.6,opacity:.95})
+        .bindTooltip("麦理浩径第"+s.n+"段",{sticky:true}).addTo(trackLayer);
+    });
+  });
+})();
+trackLayer.addTo(map);
 
 // ---------- 景点标注 = 该地点在行程里出现的日期（运行时算，不需要单独的 labels 文件） ----------
 const LAB = {};
@@ -400,7 +423,10 @@ if(window.HOTELS){
   });
 }
 layers["推荐住宿 ("+hn+")"]=hLayer;
-L.control.layers({},layers,{collapsed:window.innerWidth<600}).addTo(map);
+if((window.TRACK||{}).sections&&window.TRACK.sections.length&&trackLayer.getLayers().length)
+  layers["真实步道轨迹"]=trackLayer;
+layers["OSM 步道图层"]=TRAILS;
+L.control.layers(BASEMAPS,layers,{collapsed:window.innerWidth<600}).addTo(map);
 
 // ---------- 缩放联动：城市视野只显示城市名；街区视野显示景点/交通/酒店，且箭头切到当前城市内部路线 ----------
 function nearestCity(ll){
