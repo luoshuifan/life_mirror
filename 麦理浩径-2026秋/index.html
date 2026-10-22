@@ -163,13 +163,28 @@ const TRAILS=L.tileLayer("https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.pn
 // TRACK.sections[].parts[] 是一组 [[lat,lon],...] 折线，用来画步道真实走向，
 // 与"地点之间连直线"的行程箭头互补：箭头看行程安排，轨迹看实际路径形状。
 const trackLayer=L.layerGroup();
+// PLACES[].sec 标出地点属于第几段，配合 ITIN.days[].items 就能推出"这段是哪天走的"，
+// 轨迹于是用那天的 DAYCOL 颜色，与逐日行程卡片的标题色一致；没有 sec 的行程全部回落成橙色。
+const PSEC={}, SECDAY={};
+(window.PLACES||[]).forEach(function(p){ if(p.sec!=null&&p.name) PSEC[p.name]=p.sec; });
+(ITIN.days||[]).forEach(function(d,di){
+  (d.items||[]).forEach(function(nm){
+    const s=PSEC[nm];
+    if(s!=null&&SECDAY[s]==null) SECDAY[s]=di;
+  });
+});
+function secColor(n){
+  const di=SECDAY[n];
+  return di==null ? "#ff8c42" : DAYCOL[di%DAYCOL.length];
+}
 (function(){
   const T=window.TRACK||{};
   (T.sections||[]).forEach(function(s){
+    const col=secColor(s.n);
     (s.parts||[]).forEach(function(coords){
       if(!coords||coords.length<2) return;
       L.polyline(coords,{color:"#ffffff",weight:6,opacity:.55,interactive:false}).addTo(trackLayer);
-      L.polyline(coords,{color:"#ff8c42",weight:2.6,opacity:.95})
+      L.polyline(coords,{color:col,weight:2.8,opacity:.95})
         .bindTooltip(s.name||("第"+s.n+"段"),{sticky:true}).addTo(trackLayer);
     });
   });
@@ -249,6 +264,7 @@ const TRI="M3,9 L13.5,3 L13.5,15 Z";
 (function(){
   const T=window.TRACK||{};
   (T.sections||[]).forEach(function(s){
+    const col=secColor(s.n);
     (s.parts||[]).forEach(function(coords){
       if(!coords||coords.length<2) return;
       let acc=0;
@@ -257,7 +273,7 @@ const TRI="M3,9 L13.5,3 L13.5,15 Z";
         if(acc<0.6) continue;
         acc=0;
         const a=coords[i-1], b=coords[Math.min(i+1,coords.length-1)];
-        L.marker(coords[i],{icon:svgMark(a,b,TRI,"#ff8c42","#ffffff",1.2),
+        L.marker(coords[i],{icon:svgMark(a,b,TRI,col,"#ffffff",1.2),
           interactive:false,keyboard:false}).addTo(trackLayer);
       }
     });
