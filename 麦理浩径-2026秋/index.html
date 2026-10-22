@@ -221,156 +221,74 @@ Object.keys(groups).forEach(function(city){
     cityPos[c.key]=[c.lat,c.lon];
   }
 });
-// 端点解析：优先把字符串当 PLACES 的 name 查（精确到景点坐标），查不到再当城市 key
-// 这样 ITIN.routes 的 from/to 既能写城市 key，也能直接写地点名，箭头可精确连到实际上下车点，
-// 不再一律连到"该城市所有地点的几何中心"。
-function posOf(ref){
-  if(!ref) return null;
-  if(N2P[ref]) return [N2P[ref].lat, N2P[ref].lon];
-  return cityPos[ref]||null;
-}
 // cityM 上面临时存了坐标，下面重新收集真正的 marker 引用用于显隐控制
 cityM.length=0;
 map.eachLayer(function(l){ if(l.getTooltip && l.getTooltip() && l.getTooltip().options.className==="clabel") cityM.push(l); });
 
 // ---------- 日程箭头：每天一种颜色，城际连线 + 城内连线 ----------
 const DAYS=ITIN.days||[], UD=DAYS.map(function(d){return d.date}).filter(function(v,i,a){return a.indexOf(v)===i});
-const cityArr=L.layerGroup(), innerArr={}, arrowBox=L.layerGroup().addTo(map);
 function dayColor(dt){const i=UD.indexOf(dt);return DAYCOL[(i<0?0:i)%DAYCOL.length];}
 const CASE="#3a3f45";
 function bearingOf(a,b){const P=Math.PI/180,l1=a[0]*P,l2=b[0]*P,dl=(b[1]-a[1])*P;
   const y=Math.sin(dl)*Math.cos(l2),x=Math.cos(l1)*Math.sin(l2)-Math.sin(l1)*Math.cos(l2)*Math.cos(dl);
   return (Math.atan2(y,x)/P+360)%360;}
 function rotOf(a,b){return bearingOf(a,b)-90;}
-function along(a,b,t){return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
 function kmOf(a,b){const P=Math.PI/180;
   return Math.acos(Math.min(1,Math.sin(a[0]*P)*Math.sin(b[0]*P)+
     Math.cos(a[0]*P)*Math.cos(b[0]*P)*Math.cos((b[1]-a[1])*P)))*6371;}
-function shift(a,b,km,side){
-  const P=Math.PI/180, be=bearingOf(a,b)*P;
-  const n=-Math.sin(be)*km*side, e=Math.cos(be)*km*side, mid=(a[0]+b[0])/2;
-  return [[a[0]+n/111.32, a[1]+e/(111.32*Math.cos(mid*P))],
-          [b[0]+n/111.32, b[1]+e/(111.32*Math.cos(mid*P))]];
-}
-function drawRound(lg,a,b,col,txt,offKm){
-  const off=(typeof offKm==="number"&&offKm>0)?offKm:7;
-  const o1=shift(a,b,off,1), o2=shift(a,b,off,-1);
-  drawSeg(lg,o1[0],o1[1],col);
-  drawSeg(lg,o2[1],o2[0],col);
-  if(txt) L.marker(along(o1[0],o1[1],.28),{icon:L.divIcon({className:"",iconSize:[0,0],
-    html:'<div class="arlab">'+txt+"</div>"}),interactive:false,keyboard:false}).addTo(lg);
-}
 function svgMark(a,b,d,fill,color,sw){
   return L.divIcon({className:"",iconSize:[18,18],iconAnchor:[9,9],
     html:'<svg width="18" height="18" viewBox="0 0 18 18" style="transform:rotate('+rotOf(a,b)+'deg);display:block">'+
       '<path d="'+d+'" fill="'+fill+'" stroke="'+color+'" stroke-width="'+sw+'" '+
       'stroke-linecap="round" stroke-linejoin="round"/></svg>'});
 }
-const TRI="M3,9 L13.5,3 L13.5,15 Z", CHEV="M5,3.5 L12,9 L5,14.5";
-function drawSeg(lg,a,b,col){
-  L.polyline([a,b],{color:CASE,weight:5,opacity:.5,interactive:false}).addTo(lg);
-  L.polyline([a,b],{color:col,weight:3.4,opacity:.95,interactive:false}).addTo(lg);
-  const long = kmOf(a,b) > 60;
-  (long?[.50,.66,.82]:[]).forEach(function(t){
-    const p=along(a,b,t);
-    L.marker(p,{icon:svgMark(a,b,CHEV,"none",CASE,3.6),interactive:false,keyboard:false}).addTo(lg);
-    L.marker(p,{icon:svgMark(a,b,CHEV,"none",col,1.8),interactive:false,keyboard:false}).addTo(lg);
-  });
-  const q=along(a,b,long?.92:.78);
-  L.marker(q,{icon:svgMark(a,b,TRI,col,CASE,3.2),interactive:false,keyboard:false}).addTo(lg);
-  L.marker(q,{icon:svgMark(a,b,TRI,col,col,1),interactive:false,keyboard:false}).addTo(lg);
-}
-function routeLabel(r){
-  const icon = r.kind==="flight" ? "&#9992;" : (r.kind==="bus" ? "&#128652;" : "&#128646;");
-  let txt = r.time ? icon+" "+r.time : icon;
-  if(r.price) txt += " · "+r.price+(r.price_state?"（"+r.price_state+"）":"");
-  if(r.pending) txt += "（"+r.pending+"）";
-  return txt;
-}
+const TRI="M3,9 L13.5,3 L13.5,15 Z";
+
+// ---------- 轨迹方向箭头：沿真实折线按距离摆放 ----------
+// 地图上的方向一律以 TRACK 的真实走向为准，不再在地点之间连直线箭头。
 (function(){
-  // ---------- 城际箭头：优先用显式 ITIN.routes（出发点→到达点自己指定，跟 days[].city 完全解耦）----------
-  const ROUTES = Array.isArray(ITIN.routes) ? ITIN.routes : null;
-  if(ROUTES){
-    ROUTES.forEach(function(r){
-      const a=posOf(r.from), b=posOf(r.to);
-      if(!a || !b) return;
-      const col=dayColor(r.date);
-      const lg=L.layerGroup();
-      drawSeg(lg,a,b,col);
-      L.marker(along(a,b,.28),{icon:L.divIcon({className:"",iconSize:[0,0],
-        html:'<div class="arlab">'+routeLabel(r)+"</div>"}),interactive:false,keyboard:false}).addTo(lg);
-      lg.addTo(cityArr);
-    });
-  }else{
-    // ---------- 兼容旧数据：没有 ITIN.routes 时，退回"相邻两天 city 变化即画线"的隐式判断 ----------
-    // ITIN.origin 可选：行程"第 0 天"（出发前）所在城市 key，用来给第一天的箭头一个起点；
-    // 末日返程同理需要把当天 city 设为终点城市才画得出线——这两个坑正是新增 ITIN.routes 要绕开的。
-    let prev=ITIN.origin||null;
-    DAYS.forEach(function(d){
-      const col=dayColor(d.date);
-      if(prev && d.city!==prev && cityPos[prev] && cityPos[d.city]){
-        const a=cityPos[prev], b=cityPos[d.city], t=d.train||d.flight||{}, lg=L.layerGroup();
-        drawSeg(lg,a,b,col);
-        L.marker(along(a,b,.28),{icon:L.divIcon({className:"",iconSize:[0,0],
-          html:'<div class="arlab">'+routeLabel(Object.assign({kind:d.flight?"flight":"train"},t))+"</div>"}),
-          interactive:false,keyboard:false}).addTo(lg);
-        lg.addTo(cityArr);
+  const T=window.TRACK||{};
+  (T.sections||[]).forEach(function(s){
+    (s.parts||[]).forEach(function(coords){
+      if(!coords||coords.length<2) return;
+      let acc=0;
+      for(let i=1;i<coords.length;i++){
+        acc+=kmOf(coords[i-1],coords[i]);
+        if(acc<0.6) continue;
+        acc=0;
+        const a=coords[i-1], b=coords[Math.min(i+1,coords.length-1)];
+        L.marker(coords[i],{icon:svgMark(a,b,TRI,"#ff8c42","#ffffff",1.2),
+          interactive:false,keyboard:false}).addTo(trackLayer);
       }
-      prev=d.city;
     });
-  }
-  // ---------- 当天往返 + 城内连线：不受 ITIN.routes 影响，始终按 DAYS 逐天计算 ----------
-  DAYS.forEach(function(d){
-    const col=dayColor(d.date);
-    // 当天往返（城市不变，短途外出）：move:"round" + round_to 指定另一端城市 key
-    if(d.move==="round" && d.round_to && cityPos[d.city] && cityPos[d.round_to]){
-      const t=d.train||d.flight||{};
-      let txt = "&#8644; "+(t.time||"");
-      if(t.price) txt += " · "+t.price;
-      const lg=L.layerGroup();
-      drawRound(lg,cityPos[d.city],cityPos[d.round_to],col,txt);
-      lg.addTo(cityArr);
-    }
-    // 城内：当天 items 按城市分组，顺序相连
-    // PLACES[].round=true 表示该点是"原路往返"支线（典型如东坝 ↔ 破边洲）：
-    // 画成 主线锚点 ↔ 该点 的往返双箭头，主线则不从该点继续，避免箭头掉头看起来反向。
-    const seq=[]; (d.items||[]).forEach(function(nm){const p=N2P[nm]; if(p) seq.push(p);});
-    let i=0;
-    while(i<seq.length){
-      const c=seq[i].city, run=[];
-      while(i<seq.length && seq[i].city===c){run.push(seq[i]); i++;}
-      if(run.length>=2){
-        innerArr[c]=innerArr[c]||L.layerGroup();
-        const lg2=L.layerGroup();
-        let anchor=run[0];
-        for(let j=1;j<run.length;j++){
-          const cur=run[j], A=[anchor.lat,anchor.lon], B=[cur.lat,cur.lon];
-          if(cur.round && j+1<run.length){
-            drawRound(lg2,A,B,col,"",Math.max(0.12,kmOf(A,B)*0.06));
-            continue;
-          }
-          drawSeg(lg2,A,B,col);
-          anchor=cur;
-        }
-        lg2.addTo(innerArr[c]);
-      }
-    }
   });
 })();
-arrowBox.addTo(map);
 
 // ---------- 起点 / 终点标记 ----------
 // 数据：ITIN.start / ITIN.end，形如 {"place":"万宜水库东坝"}，place 为 PLACES 的 name。
 // 没写就自动兜底：起点取第一天第一个 item，终点取最后一天最后一个 item；两者都取不到就不画。
-// 挂在 map 上常驻显示（不放 arrowBox，arrowBox 会被 clearLayers 清掉）。
+// 有 TRACK 时，标记会吸附到真实轨迹上最近的点（300 m 内），保证"起/终"落在步道上而不是孤立坐标。
 (function(){
   const first=(DAYS[0]||{}).items||[], last=(DAYS[DAYS.length-1]||{}).items||[];
   const sRef=(ITIN.start&&ITIN.start.place)||first[0]||null;
   const eRef=(ITIN.end&&ITIN.end.place)||last[last.length-1]||null;
+  function snap(pt){
+    const T=window.TRACK||{}; let best=pt, bd=Infinity;
+    (T.sections||[]).forEach(function(s){
+      (s.parts||[]).forEach(function(coords){
+        (coords||[]).forEach(function(c){
+          const d=kmOf(pt,c);
+          if(d<bd){ bd=d; best=c; }
+        });
+      });
+    });
+    return bd<0.3 ? best : pt;
+  }
   function cap(p,kind){
     if(!p) return;
+    const at=snap([p.lat,p.lon]);
     const isS=kind==="start", bg=isS?"#1b7a4b":"#b3541e", bd=isS?"#7ee2b0":"#f5b183";
-    L.marker([p.lat,p.lon],{icon:L.divIcon({className:"",iconSize:[28,28],iconAnchor:[14,14],
+    L.marker(at,{icon:L.divIcon({className:"",iconSize:[28,28],iconAnchor:[14,14],
       html:'<div style="width:28px;height:28px;border-radius:50%;background:'+bg+
         ';border:2px solid '+bd+';color:#fff;font-size:14px;font-weight:600;'+
         'display:flex;align-items:center;justify-content:center;'+
@@ -464,13 +382,6 @@ function applyZoom(){
   hM.forEach(function(m){const t=m.getTooltip();const e=t&&t.getElement();if(e)e.style.display=cityMode?"none":"";});
   tM.forEach(function(m){const t=m.getTooltip();const e=t&&t.getElement();if(e)e.style.display=cityMode?"none":"";});
   cityM.forEach(function(m){const t=m.getTooltip();const e=t&&t.getElement();if(e)e.style.display=cityMode?"":"none";});
-  arrowBox.clearLayers();
-  if(!map.hasLayer(arrowBox)) return;
-  if(cityMode){ arrowBox.addLayer(cityArr); }
-  else{
-    const c=nearestCity(map.getCenter());
-    if(c&&innerArr[c]) arrowBox.addLayer(innerArr[c]);
-  }
 }
 map.on("zoomend",applyZoom);
 map.on("moveend",applyZoom);
