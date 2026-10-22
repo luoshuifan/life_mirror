@@ -170,7 +170,7 @@ const trackLayer=L.layerGroup();
       if(!coords||coords.length<2) return;
       L.polyline(coords,{color:"#ffffff",weight:6,opacity:.55,interactive:false}).addTo(trackLayer);
       L.polyline(coords,{color:"#ff8c42",weight:2.6,opacity:.95})
-        .bindTooltip("麦理浩径第"+s.n+"段",{sticky:true}).addTo(trackLayer);
+        .bindTooltip(s.name||("第"+s.n+"段"),{sticky:true}).addTo(trackLayer);
     });
   });
 })();
