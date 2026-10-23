@@ -170,7 +170,7 @@ function kmOf(a,b){const P=Math.PI/180;
 function bearingOf(a,b){const P=Math.PI/180,l1=a[0]*P,l2=b[0]*P,dl=(b[1]-a[1])*P;
   const y=Math.sin(dl)*Math.cos(l2),x=Math.cos(l1)*Math.sin(l2)-Math.sin(l1)*Math.cos(l2)*Math.cos(dl);
   return (Math.atan2(y,x)/P+360)%360;}
-function rotOf(a,b){return bearingOf(a,b)-90;}
+function rotOf(a,b){return bearingOf(a,b)+90;}
 function svgMark(a,b,d,fill,color,sw){
   return L.divIcon({className:"",iconSize:[18,18],iconAnchor:[9,9],
     html:'<svg width="18" height="18" viewBox="0 0 18 18" style="transform:rotate('+rotOf(a,b)+'deg);display:block">'+
