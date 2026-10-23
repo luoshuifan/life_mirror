@@ -89,6 +89,9 @@ footer{color:var(--dim);font-size:12px;text-align:center;padding:24px 0 40px}
  border:1px solid #5a6673;color:#e8ecf1;border-radius:8px;padding:2px 7px;font-size:11px;line-height:1.45;
  box-shadow:0 1px 5px rgba(0,0,0,.45)}
 .lgd{background:rgba(15,19,25,.92);color:#e8ecf1;border:1px solid #46525f;border-radius:8px;padding:6px 10px;font-size:12px;line-height:1.7;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+.lgd button{display:block;width:100%;margin:0;padding:0;background:transparent;border:0;color:#e8ecf1;font:inherit;font-weight:700;text-align:left;cursor:pointer}
+.lgd.closed{padding:4px 10px}
+.lgd.closed .lgd-body{display:none}
 .lgd i{display:inline-block;width:18px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle;box-shadow:0 0 0 1px #fff}
 </style></head><body><div class="wrap">
 <header>
@@ -623,15 +626,18 @@ L.control.layers(BASEMAPS,layers,{collapsed:window.innerWidth<600}).addTo(map);
   const src=rows.length ? rows : DAYS.map(function(d){return {day:d.date,name:d.date};});
   const lg=L.control({position:"bottomleft"});
   lg.onAdd=function(){
-    const el=L.DomUtil.create("div","lgd");
-    el.innerHTML=src.map(function(s){
+    const el=L.DomUtil.create("div","lgd closed");
+    el.innerHTML='<button type="button">图例</button><div class="lgd-body">'+src.map(function(s){
       return '<div><i style="background:'+dayColor(s.day)+'"></i>'+(s.name||s.day)+"</div>";
     }).join("")+
       '<div><svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:6px"><rect x="1" y="1" width="10" height="10" rx="1.5" fill="#3a3114" stroke="#f5d76e" stroke-width="1.4"/></svg>全程起终</div>'+
       '<div><svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:6px"><circle cx="6" cy="6" r="4.2" fill="#1b212b" stroke="#f2f5f8" stroke-width="1.4"/></svg>分段起终</div>'+
       '<div><svg width="16" height="10" viewBox="0 0 18 18" style="vertical-align:middle;margin-right:6px"><path d="'+BI+'" fill="none" stroke="#e8ecf1" stroke-width="1.4" stroke-linejoin="round"/></svg>往返</div>'+
       '<div><svg width="22" height="8" viewBox="0 0 22 8" style="vertical-align:middle;margin-right:6px"><line x1="1" y1="4" x2="21" y2="4" stroke="#fff" stroke-width="5" stroke-dasharray="5 3"/><line x1="1" y1="4" x2="21" y2="4" stroke="#1d4e89" stroke-width="2.5" stroke-dasharray="5 3"/></svg>出发 / 返回</div>'+
-      '<div style="color:#9aa5b1">飞 铁 车 船 · 虚线上的交通</div>';
+      '<div style="color:#9aa5b1">飞 铁 车 船 · 虚线上的交通</div></div>';
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+    el.querySelector("button").addEventListener("click",function(){ el.classList.toggle("closed"); });
     return el;
   };
   lg.addTo(map);
