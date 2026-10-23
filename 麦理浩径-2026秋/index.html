@@ -21,11 +21,15 @@ a.back{color:var(--dim);font-size:12px;text-decoration:none}
 .fsbtn a{display:flex!important;align-items:center;justify-content:center;width:32px!important;height:32px!important;line-height:32px!important;font-size:15px;color:#222;text-decoration:none;background:#fff;border-radius:4px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
 .day{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
-.day .hd{display:flex;align-items:baseline;gap:10px;padding:12px 16px;background:#202832;border-bottom:1px solid var(--line)}
+.day .hd{display:flex;align-items:baseline;gap:10px;width:100%;padding:12px 16px;background:#202832;border:0;border-bottom:1px solid var(--line);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.day:not(.open) .hd{border-bottom:0}
+.day .chev{color:var(--dim);font-size:12px;display:inline-block;transform:rotate(-90deg)}
+.day.open .chev{transform:none}
 .day .d{font-size:17px;font-weight:700;color:var(--accent)}
 .day .w{color:var(--dim);font-size:12px}
 .day .s{margin-left:auto;color:var(--dim);font-size:12px}
-.day .bd{padding:12px 16px}
+.day .bd{display:none;padding:12px 16px}
+.day.open .bd{display:block}
 .tp{color:var(--dim);font-size:12px;margin-bottom:8px}.tp b{color:var(--text);font-weight:500}
 .note{color:#e8c07a;font-size:12px;margin-top:8px}
 .ampm{color:#9aa5b1;font-size:12px}
@@ -744,14 +748,17 @@ document.getElementById("days").innerHTML = DAYS.map(function(d){
     return '<li><div class="pn">'+nm+ampm+dur+"</div>"+desc+book+th+"</li>";
   }).join("");
   const col=dayColor(d.date);
-  return '<div class="day" style="border-left:4px solid '+col+'"><div class="hd"><span class="d" style="color:'+col+'">'+d.date+
-    '</span><span class="w">周'+d.w+'</span><span class="s">住 '+(d.stay||"—")+'</span></div>'+
+  return '<div class="day" style="border-left:4px solid '+col+'"><button type="button" class="hd"><span class="d" style="color:'+col+'">'+d.date+
+    '</span><span class="w">周'+d.w+'</span><span class="s">住 '+(d.stay||"—")+'</span><span class="chev">&#9662;</span></button>'+
     '<div class="bd">'+
     (d.transport?'<div class="tp"><b>'+(d.flight?"&#9992;":"&#128646;")+"</b> "+d.transport+"</div>":"")+
     (items?"<ul>"+items+"</ul>":"")+
     (d.note?'<div class="note">'+d.note+"</div>":"")+
     "</div></div>";
 }).join("");
+Array.prototype.forEach.call(document.querySelectorAll("#days .hd"),function(b){
+  b.addEventListener("click",function(){ b.parentNode.classList.toggle("open"); });
+});
 
 // ---------- 行程一览（时间轴表） ----------
 document.getElementById("overview").innerHTML = DAYS.map(function(d){
