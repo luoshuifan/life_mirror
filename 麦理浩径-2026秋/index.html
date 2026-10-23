@@ -523,34 +523,40 @@ function modeIcon(ch,col){
     html:'<div style="width:22px;height:22px;border-radius:50%;background:#1b212b;border:2px solid '+col+
       ';color:'+col+';font-size:11px;font-weight:700;line-height:22px;text-align:center">'+ch+"</div>"});
 }
+function routeLine(r, from, to){
+  if(r.line&&r.line.length>1&&typeof r.line[0][0]==="number") return r.line;
+  if(from&&to) return arcPts(from,to,0);
+  return null;
+}
 function drawAccessSide(side,list){
-  const n=list.length;
   const ports={};
-  list.forEach(function(r,idx){
-    const from=side==="depart"?accessAt(r.from):accessAt(r.from);
-    const to=side==="depart"?accessAt(r.to):accessAt(r.to);
-    if(!from||!to) return;
-    const bend=(idx-(n-1)/2)*7;
-    const pts=arcPts(from,to,bend);
-    const line=L.polyline(pts,{color:ACCESSCOL,weight:2,opacity:.45,dashArray:"7 7",interactive:true}).addTo(map);
+  list.forEach(function(r){
+    const from=accessAt(r.from);
+    const to=accessAt(r.to);
+    const pts=routeLine(r, from, to);
+    if(!pts||pts.length<2) return;
+    const line=L.polyline(pts,{color:ACCESSCOL,weight:2.5,opacity:.7,dashArray:"7 7",interactive:true}).addTo(map);
     line.bindTooltip(r.label||"",{permanent:true,direction:"center",className:"plabel",opacity:1});
     const mid=pts[Math.floor(pts.length/2)];
-    const chip=L.marker(mid,{icon:modeIcon(MODECH[r.mode]||"车",ACCESSCOL),interactive:false,keyboard:false}).addTo(map);
-    const port=side==="depart"?from:to;
+    const chip=L.marker(mid,{icon:modeIcon(MODECH[r.mode]||"车",ACCESSCOL),interactive:false,keyboard:false,zIndexOffset:800}).addTo(map);
+    const port=side==="depart"?pts[0]:pts[pts.length-1];
     const key=side+"|"+port[0].toFixed(3)+"|"+port[1].toFixed(3);
-    bounds.push(from,to);
+    bounds.push(pts[0], pts[pts.length-1]);
     r._line=line; r._chip=chip; r._side=side;
     if(!ports[key]){
-      const mk=L.marker(port,{icon:portIcon(side==="depart"?"出":"返",false),zIndexOffset:900}).addTo(map);
-      mk.on("click",function(){ accessOpen[side]=!accessOpen[side]; showAccess(); });
+      const mk=L.marker(port,{pane:"termPane",icon:portIcon(side==="depart"?"出":"返",false),zIndexOffset:900}).addTo(map);
+      mk.on("click",function(){
+        list.forEach(function(x){ x.chosen=false; });
+        showAccess();
+      });
       ports[key]={marker:mk, routes:[]};
     }
     ports[key].routes.push(r);
     r._port=ports[key];
     line.on("click",function(){
+      const was=r.chosen;
       list.forEach(function(x){ x.chosen=false; });
-      r.chosen=true;
-      accessOpen[side]=false;
+      r.chosen=!was;
       showAccess();
     });
     accessItems.push(r);
@@ -559,56 +565,47 @@ function drawAccessSide(side,list){
 drawAccessSide("depart", ACCESS.depart||[]);
 drawAccessSide("return", ACCESS.return||[]);
 (window.RIDES||[]).forEach(function(r){
+  const pts=(r.line&&r.line.length>1)?r.line:null;
   const a=accessAt(r.from), b=accessAt(r.to);
-  if(!a||!b) return;
+  const use=pts||(a&&b?arcPts(a,b,0):null);
+  if(!use||use.length<2) return;
   const col=dayColor(r.day||"");
-  const pts=r.round?arcPts(a,b,3).concat(arcPts(b,a,3)):arcPts(a,b,4);
-  const line=L.polyline(pts,{color:col,weight:3,opacity:.9,dashArray:"2 8"}).addTo(map);
-  const mid=pts[Math.floor(pts.length/2)];
+  const line=L.polyline(use,{color:col,weight:3,opacity:.9,dashArray:"2 8"}).addTo(map);
+  const mid=use[Math.floor(use.length/2)];
   const chip=L.marker(mid,{icon:modeIcon(MODECH[r.mode]||"车",col),interactive:false,keyboard:false}).addTo(map);
   line.bindTooltip(r.label||"",{permanent:true,direction:"center",className:"plabel",opacity:1});
   accessItems.push({_line:line,_chip:chip,_ride:true,_side:"ride",chosen:true,label:r.label||""});
 });
 function showAccess(){
-  const city=map.getZoom()<CITY_ZOOM;
   ["depart","return"].forEach(function(side){
     const list=(ACCESS[side]||[]).filter(function(r){return r._line;});
-    const any=list.some(function(r){return r.chosen;});
-    const open=accessOpen[side];
     list.forEach(function(r){
-      const visible=any?(r.chosen||(open&&city)):city;
+      r._line.setStyle({opacity:r.chosen?0.95:0.72, weight:r.chosen?4:2.5});
       const path=r._line._path;
-      r._line.setStyle({opacity:visible?(r.chosen?0.95:0.38):0, weight:r.chosen?3.5:2});
-      if(path) path.style.pointerEvents=visible?"auto":"none";
+      if(path) path.style.pointerEvents="auto";
       const tip=r._line.getTooltip&&r._line.getTooltip();
       const te=tip&&tip.getElement();
-      if(te) te.style.display=visible?"":"none";
-      const ce=r._chip.getElement();
-      if(ce) ce.style.display=visible?"":"none";
+      if(te) te.style.display="";
+      const ce=r._chip&&r._chip.getElement();
+      if(ce) ce.style.display="";
     });
     const seen={};
     list.forEach(function(r){
       if(!r._port||seen[r._port.marker._leaflet_id]) return;
       seen[r._port.marker._leaflet_id]=1;
       const filled=r._port.routes.some(function(x){return x.chosen;});
-      const anyVis=r._port.routes.some(function(x){
-        return any?(x.chosen||(open&&city)):city;
-      });
       r._port.marker.setIcon(portIcon(side==="depart"?"出":"返",filled));
       const e=r._port.marker.getElement();
-      if(e) e.style.display=anyVis?"":"none";
+      if(e) e.style.display="";
     });
   });
   accessItems.forEach(function(r){
     if(!r._ride) return;
-    const city2=map.getZoom()<CITY_ZOOM;
-    const km=kmOf(r._line.getLatLngs()[0], r._line.getLatLngs()[r._line.getLatLngs().length-1]);
-    const visible=!city2||km>25;
-    r._line.setStyle({opacity:visible?0.9:0});
+    r._line.setStyle({opacity:0.9});
     const te=r._line.getTooltip()&&r._line.getTooltip().getElement();
-    if(te) te.style.display=visible?"":"none";
+    if(te) te.style.display="";
     const ce=r._chip.getElement();
-    if(ce) ce.style.display=visible?"":"none";
+    if(ce) ce.style.display="";
   });
 }
 if((window.TRACK||{}).sections&&window.TRACK.sections.length&&trackLayer.getLayers().length)
