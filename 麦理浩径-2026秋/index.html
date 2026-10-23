@@ -112,6 +112,8 @@ footer{color:var(--dim);font-size:12px;text-align:center;padding:24px 0 40px}
 <script src="data/transit.js"></script>
 <script src="data/hotels.js"></script>
 <script src="data/track.js"></script>
+<script src="data/access.js"></script>
+<script src="data/rides.js"></script>
 <script src="data/version.js"></script>
 <script>
 /* ============================================================
@@ -426,6 +428,15 @@ const TR=window.TRANSIT||{points:[],metro:[]};
 const tLayer=L.layerGroup().addTo(map), tM=[];
 const TSTYLE={airport:["&#9992;","#e8590c"],train:["&#128646;","#1c7ed6"],bus:["&#128652;","#12b886"]};
 (TR.points||[]).forEach(function(p){
+  const A=window.ACCESS||{};
+  const ports=[];
+  ["depart","return"].forEach(function(k){
+    (A[k]||[]).forEach(function(r){
+      const end=k==="depart"?r.from:r.to;
+      if(end&&typeof end.lat==="number") ports.push([end.lat,end.lon]);
+    });
+  });
+  if(ports.some(function(q){return kmOf([p.lat,p.lon],q)<0.4;})) return;
   const s=TSTYLE[p.kind]||["&#9873;","#888"];
   const hit=nearestTrack([p.lat,p.lon]);
   const snapped=hit.km<=1.5;
@@ -474,6 +485,132 @@ if(window.HOTELS){
   });
 }
 if(hn) layers["推荐住宿 ("+hn+")"]=hLayer;
+const ACCESS=window.ACCESS||{depart:[],return:[]};
+const accessOpen={depart:false,return:false};
+const accessItems=[];
+const MODECH={plane:"飞",train:"铁",car:"车",boat:"船"};
+const ACCESSCOL="#8eb4d4";
+function accessAt(ref){
+  if(ref&&typeof ref.lat==="number") return [ref.lat,ref.lon];
+  const name=typeof ref==="string"?ref:(ref&&(ref.place||ref.name));
+  const p=name&&N2P[name];
+  if(!p) return null;
+  return p._ll||[p.lat,p.lon];
+}
+function arcPts(a,b,bendKm){
+  const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+  const vy=b[0]-a[0], vx=b[1]-a[1];
+  const n=Math.sqrt(vx*vx+vy*vy)||1;
+  const s=bendKm/111;
+  const c=[mid[0]+(-vx/n)*s, mid[1]+(vy/n)*s];
+  const pts=[];
+  for(let i=0;i<=16;i++){
+    const t=i/16, u=1-t;
+    pts.push([u*u*a[0]+2*u*t*c[0]+t*t*b[0], u*u*a[1]+2*u*t*c[1]+t*t*b[1]]);
+  }
+  return pts;
+}
+function portIcon(ch,filled){
+  const bg=filled?"#243044":"rgba(18,22,28,.35)";
+  const c=filled?"#d6e6f5":ACCESSCOL;
+  return L.divIcon({className:"",iconSize:[26,26],iconAnchor:[13,13],
+    html:'<div style="width:26px;height:26px;border-radius:4px;background:'+bg+';border:2px solid '+ACCESSCOL+
+      ';color:'+c+';font-size:13px;font-weight:700;line-height:26px;text-align:center;'+
+      'box-shadow:0 0 0 2px rgba(0,0,0,.35)">'+ch+"</div>"});
+}
+function modeIcon(ch,col){
+  return L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],
+    html:'<div style="width:22px;height:22px;border-radius:50%;background:#1b212b;border:2px solid '+col+
+      ';color:'+col+';font-size:11px;font-weight:700;line-height:22px;text-align:center">'+ch+"</div>"});
+}
+function drawAccessSide(side,list){
+  const n=list.length;
+  const ports={};
+  list.forEach(function(r,idx){
+    const from=side==="depart"?accessAt(r.from):accessAt(r.from);
+    const to=side==="depart"?accessAt(r.to):accessAt(r.to);
+    if(!from||!to) return;
+    const bend=(idx-(n-1)/2)*7;
+    const pts=arcPts(from,to,bend);
+    const line=L.polyline(pts,{color:ACCESSCOL,weight:2,opacity:.45,dashArray:"7 7",interactive:true}).addTo(map);
+    line.bindTooltip(r.label||"",{permanent:true,direction:"center",className:"plabel",opacity:1});
+    const mid=pts[Math.floor(pts.length/2)];
+    const chip=L.marker(mid,{icon:modeIcon(MODECH[r.mode]||"车",ACCESSCOL),interactive:false,keyboard:false}).addTo(map);
+    const port=side==="depart"?from:to;
+    const key=side+"|"+port[0].toFixed(3)+"|"+port[1].toFixed(3);
+    bounds.push(from,to);
+    r._line=line; r._chip=chip; r._side=side;
+    if(!ports[key]){
+      const mk=L.marker(port,{icon:portIcon(side==="depart"?"出":"返",false),zIndexOffset:900}).addTo(map);
+      mk.on("click",function(){ accessOpen[side]=!accessOpen[side]; showAccess(); });
+      ports[key]={marker:mk, routes:[]};
+    }
+    ports[key].routes.push(r);
+    r._port=ports[key];
+    line.on("click",function(){
+      list.forEach(function(x){ x.chosen=false; });
+      r.chosen=true;
+      accessOpen[side]=false;
+      showAccess();
+    });
+    accessItems.push(r);
+  });
+}
+drawAccessSide("depart", ACCESS.depart||[]);
+drawAccessSide("return", ACCESS.return||[]);
+(window.RIDES||[]).forEach(function(r){
+  const a=accessAt(r.from), b=accessAt(r.to);
+  if(!a||!b) return;
+  const col=dayColor(r.day||"");
+  const pts=r.round?arcPts(a,b,3).concat(arcPts(b,a,3)):arcPts(a,b,4);
+  const line=L.polyline(pts,{color:col,weight:3,opacity:.9,dashArray:"2 8"}).addTo(map);
+  const mid=pts[Math.floor(pts.length/2)];
+  const chip=L.marker(mid,{icon:modeIcon(MODECH[r.mode]||"车",col),interactive:false,keyboard:false}).addTo(map);
+  line.bindTooltip(r.label||"",{permanent:true,direction:"center",className:"plabel",opacity:1});
+  accessItems.push({_line:line,_chip:chip,_ride:true,_side:"ride",chosen:true,label:r.label||""});
+});
+function showAccess(){
+  const city=map.getZoom()<CITY_ZOOM;
+  ["depart","return"].forEach(function(side){
+    const list=(ACCESS[side]||[]).filter(function(r){return r._line;});
+    const any=list.some(function(r){return r.chosen;});
+    const open=accessOpen[side];
+    list.forEach(function(r){
+      const visible=any?(r.chosen||(open&&city)):city;
+      const path=r._line._path;
+      r._line.setStyle({opacity:visible?(r.chosen?0.95:0.38):0, weight:r.chosen?3.5:2});
+      if(path) path.style.pointerEvents=visible?"auto":"none";
+      const tip=r._line.getTooltip&&r._line.getTooltip();
+      const te=tip&&tip.getElement();
+      if(te) te.style.display=visible?"":"none";
+      const ce=r._chip.getElement();
+      if(ce) ce.style.display=visible?"":"none";
+    });
+    const seen={};
+    list.forEach(function(r){
+      if(!r._port||seen[r._port.marker._leaflet_id]) return;
+      seen[r._port.marker._leaflet_id]=1;
+      const filled=r._port.routes.some(function(x){return x.chosen;});
+      const anyVis=r._port.routes.some(function(x){
+        return any?(x.chosen||(open&&city)):city;
+      });
+      r._port.marker.setIcon(portIcon(side==="depart"?"出":"返",filled));
+      const e=r._port.marker.getElement();
+      if(e) e.style.display=anyVis?"":"none";
+    });
+  });
+  accessItems.forEach(function(r){
+    if(!r._ride) return;
+    const city2=map.getZoom()<CITY_ZOOM;
+    const km=kmOf(r._line.getLatLngs()[0], r._line.getLatLngs()[r._line.getLatLngs().length-1]);
+    const visible=!city2||km>25;
+    r._line.setStyle({opacity:visible?0.9:0});
+    const te=r._line.getTooltip()&&r._line.getTooltip().getElement();
+    if(te) te.style.display=visible?"":"none";
+    const ce=r._chip.getElement();
+    if(ce) ce.style.display=visible?"":"none";
+  });
+}
 if((window.TRACK||{}).sections&&window.TRACK.sections.length&&trackLayer.getLayers().length)
   layers["真实步道轨迹"]=trackLayer;
 layers["OSM 步道图层"]=TRAILS;
@@ -490,7 +627,9 @@ L.control.layers(BASEMAPS,layers,{collapsed:window.innerWidth<600}).addTo(map);
     }).join("")+
       '<div><svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:6px"><rect x="1" y="1" width="10" height="10" rx="1.5" fill="#3a3114" stroke="#f5d76e" stroke-width="1.4"/></svg>全程起终</div>'+
       '<div><svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:6px"><circle cx="6" cy="6" r="4.2" fill="#1b212b" stroke="#f2f5f8" stroke-width="1.4"/></svg>分段起终</div>'+
-      '<div><svg width="16" height="10" viewBox="0 0 18 18" style="vertical-align:middle;margin-right:6px"><path d="'+BI+'" fill="none" stroke="#e8ecf1" stroke-width="1.4" stroke-linejoin="round"/></svg>往返</div>';
+      '<div><svg width="16" height="10" viewBox="0 0 18 18" style="vertical-align:middle;margin-right:6px"><path d="'+BI+'" fill="none" stroke="#e8ecf1" stroke-width="1.4" stroke-linejoin="round"/></svg>往返</div>'+
+      '<div><svg width="14" height="14" viewBox="0 0 14 14" style="vertical-align:middle;margin-right:6px"><rect x="1" y="1" width="12" height="12" rx="2" fill="none" stroke="#8eb4d4" stroke-width="1.6"/></svg>出发 / 返回</div>'+
+      '<div style="color:#9aa5b1">飞 铁 车 船 · 虚线上的交通</div>';
     return el;
   };
   lg.addTo(map);
@@ -549,6 +688,7 @@ function applyZoom(){
     const e2=m.getElement();
     if(e2) e2.style.display="";
   });
+  if(typeof showAccess==="function") showAccess();
 }
 map.on("zoomend",applyZoom);
 map.on("moveend",applyZoom);
