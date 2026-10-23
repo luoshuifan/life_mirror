@@ -178,6 +178,18 @@ function svgMark(a,b,d,fill,color,sw){
       'stroke-linecap="round" stroke-linejoin="round"/></svg>'});
 }
 const TRI="M3,9 L13.5,3 L13.5,15 Z";
+const BI="M1.5,9 L7.5,4 L7.5,7 L10.5,7 L10.5,4 L16.5,9 L10.5,14 L10.5,11 L7.5,11 L7.5,14 Z";
+function isLoop(coords){
+  if(!coords||coords.length<8) return false;
+  if(kmOf(coords[0],coords[coords.length-1])>0.04) return false;
+  const mid=Math.floor(coords.length/2);
+  let ok=0,n=0,step=Math.max(1,Math.floor(mid/6));
+  for(let i=0;i<mid;i+=step){
+    n++;
+    if(kmOf(coords[i],coords[coords.length-1-i])<0.06) ok++;
+  }
+  return n>0&&ok/n>=0.6;
+}
 function nearestTrack(pt){
   const T=window.TRACK||{};
   let best=null, bd=Infinity, day=null;
@@ -215,14 +227,33 @@ const arrowM=[];
       L.polyline(coords,{color:"#ffffff",weight:7,opacity:.72,interactive:false}).addTo(trackLayer);
       L.polyline(coords,{color:col,weight:4,opacity:.95})
         .bindTooltip(s.name||("第"+s.n+"段"),{sticky:true}).addTo(trackLayer);
-      let acc=0;
-      for(let i=1;i<coords.length;i++){
-        acc+=kmOf(coords[i-1],coords[i]);
-        if(acc<1.2) continue;
-        acc=0;
-        const a=coords[i-1], b=coords[Math.min(i+1,coords.length-1)];
-        arrowM.push(L.marker(coords[i],{icon:svgMark(a,b,TRI,col,"#ffffff",1.2),
-          interactive:false,keyboard:false}).addTo(trackLayer));
+      if(isLoop(coords)){
+        const mid=Math.floor(coords.length/2);
+        let acc=0, placed=0;
+        for(let i=1;i<mid;i++){
+          acc+=kmOf(coords[i-1],coords[i]);
+          if(acc<1.2) continue;
+          acc=0; placed++;
+          const a=coords[i-1], b=coords[Math.min(i+1,mid)];
+          arrowM.push(L.marker(coords[i],{icon:svgMark(a,b,BI,col,"#ffffff",1),
+            interactive:false,keyboard:false}).addTo(trackLayer));
+        }
+        if(!placed){
+          const i=Math.max(1,Math.floor(mid*0.55));
+          const a=coords[i-1], b=coords[Math.min(i+1,mid)];
+          arrowM.push(L.marker(coords[i],{icon:svgMark(a,b,BI,col,"#ffffff",1),
+            interactive:false,keyboard:false}).addTo(trackLayer));
+        }
+      }else{
+        let acc=0;
+        for(let i=1;i<coords.length;i++){
+          acc+=kmOf(coords[i-1],coords[i]);
+          if(acc<1.2) continue;
+          acc=0;
+          const a=coords[i-1], b=coords[Math.min(i+1,coords.length-1)];
+          arrowM.push(L.marker(coords[i],{icon:svgMark(a,b,TRI,col,"#ffffff",1.2),
+            interactive:false,keyboard:false}).addTo(trackLayer));
+        }
       }
     });
   });
@@ -290,23 +321,82 @@ Object.keys(groups).forEach(function(city){
 cityM.length=0;
 map.eachLayer(function(l){ if(l.getTooltip && l.getTooltip() && l.getTooltip().options.className==="clabel") cityM.push(l); });
 
+const TRIPCOL="#f5d76e", SEGCOL="#ffffff";
+const termM=[];
+function termBox(html,w,h){
+  return L.divIcon({className:"",iconSize:[w,h],iconAnchor:[w/2,h/2],html:html});
+}
+function termFace(ch,trip){
+  const c=trip?TRIPCOL:SEGCOL, bd=trip?TRIPCOL:"#d5dbe3", radius=trip?"3px":"50%";
+  return '<div style="width:18px;height:18px;border-radius:'+radius+';background:#1b212b;border:2px solid '+bd+
+    ';color:'+c+';font-size:11px;font-weight:700;line-height:18px;text-align:center;'+
+    'box-shadow:0 0 0 2px rgba(0,0,0,.45)">'+ch+"</div>";
+}
+function splitFace(ul,lr,ulTrip,lrTrip){
+  const uc=ulTrip?TRIPCOL:SEGCOL, lc=lrTrip?TRIPCOL:SEGCOL;
+  const stroke=(ulTrip||lrTrip)?TRIPCOL:"#c5ced6";
+  return '<svg width="36" height="30" viewBox="0 0 36 30" style="display:block;overflow:visible">'+
+    '<rect x="1.5" y="1.5" width="33" height="27" rx="8" fill="#1b212b" stroke="'+stroke+'" stroke-width="1.6"/>'+
+    '<line x1="33" y1="3" x2="3" y2="27" stroke="#5c6770" stroke-width="1"/>'+
+    '<text x="8" y="14" fill="'+uc+'" font-size="12" font-weight="700" font-family="PingFang SC,Microsoft YaHei,sans-serif">'+ul+"</text>"+
+    '<text x="19" y="25" fill="'+lc+'" font-size="12" font-weight="700" font-family="PingFang SC,Microsoft YaHei,sans-serif">'+lr+"</text>"+
+    "</svg>";
+}
+function iconFor(j,cityMode){
+  const segs=j.segs||[];
+  if(cityMode){
+    if(!j.trip) return null;
+    return termBox(termFace(j.trip,true),18,18);
+  }
+  if(j.trip&&segs.length) return termBox(splitFace(j.trip,segs[0].ch,true,false),36,30);
+  if(segs.length>=2) return termBox(splitFace(segs[0].ch,segs[1].ch,false,false),36,30);
+  if(segs.length===1) return termBox(termFace(segs[0].ch,false),18,18);
+  if(j.trip) return termBox(termFace(j.trip,true),18,18);
+  return null;
+}
 (function(){
+  const joints=[];
+  function absorb(pt,fn){
+    let j=null;
+    for(let i=0;i<joints.length;i++){
+      if(kmOf(joints[i].at,pt)<0.08){ j=joints[i]; break; }
+    }
+    if(!j){ j={at:[pt[0],pt[1]], trip:null, segs:[]}; joints.push(j); }
+    fn(j);
+  }
+  function endsOf(s){
+    const parts=(s.parts||[]).filter(function(p){return p&&p.length;});
+    if(!parts.length) return null;
+    const last=parts[parts.length-1];
+    return {start:parts[0][0], end:last[last.length-1]};
+  }
+  const byDay={};
+  ((window.TRACK||{}).sections||[]).forEach(function(s){ if(s.day) byDay[s.day]=s; });
+  DAYS.forEach(function(d){
+    const e=byDay[d.date]?endsOf(byDay[d.date]):null;
+    if(!e) return;
+    absorb(e.start,function(j){ j.segs.push({ch:"起"}); });
+    absorb(e.end,function(j){ j.segs.push({ch:"终"}); });
+  });
   const first=(DAYS[0]||{}).items||[], last=(DAYS[DAYS.length-1]||{}).items||[];
   const sRef=(ITIN.start&&ITIN.start.place)||first[0]||null;
   const eRef=(ITIN.end&&ITIN.end.place)||last[last.length-1]||null;
-  function cap(p,kind){
-    if(!p) return;
-    const at=p._ll||nearestTrack([p.lat,p.lon]).at;
-    const isS=kind==="start", bg=isS?"#1b7a4b":"#b3541e", bd=isS?"#7ee2b0":"#f5b183";
-    L.marker(at,{icon:L.divIcon({className:"",iconSize:[28,28],iconAnchor:[14,14],
-      html:'<div style="width:28px;height:28px;border-radius:50%;background:'+bg+
-        ';border:2px solid '+bd+';color:#fff;font-size:14px;font-weight:600;'+
-        'display:flex;align-items:center;justify-content:center;'+
-        'box-shadow:0 0 0 2px rgba(0,0,0,.4)">'+(isS?"起":"终")+"</div>"}),
-      interactive:false,keyboard:false,zIndexOffset:1000}).addTo(map);
+  function atOf(name){
+    const p=N2P[name];
+    if(!p) return null;
+    return p._ll||nearestTrack([p.lat,p.lon]).at;
   }
-  cap(N2P[sRef]||null,"start");
-  cap(N2P[eRef]||null,"end");
+  const sAt=atOf(sRef), eAt=atOf(eRef);
+  if(sAt) absorb(sAt,function(j){ j.trip="起"; });
+  if(eAt) absorb(eAt,function(j){ j.trip="终"; });
+  const cityMode=map.getZoom()<CITY_ZOOM;
+  joints.forEach(function(j){
+    const ic=iconFor(j,cityMode);
+    const m=L.marker(j.at,{icon:ic||termBox("",1,1),interactive:false,keyboard:false,zIndexOffset:1100}).addTo(map);
+    m._joint=j;
+    if(!ic){ const e=m.getElement(); if(e) e.style.display="none"; }
+    termM.push(m);
+  });
 })();
 
 // ---------- 交通点：机场 / 火车站 / 大巴站 / 相关地铁站（可选数据） ----------
@@ -375,7 +465,10 @@ L.control.layers(BASEMAPS,layers,{collapsed:window.innerWidth<600}).addTo(map);
     const el=L.DomUtil.create("div","lgd");
     el.innerHTML=src.map(function(s){
       return '<div><i style="background:'+dayColor(s.day)+'"></i>'+(s.name||s.day)+"</div>";
-    }).join("");
+    }).join("")+
+      '<div><b style="color:'+TRIPCOL+'">■</b> 全程起终</div>'+
+      '<div><b style="color:#fff">●</b> 分段起终</div>'+
+      '<div><b style="color:#d81e5b">↔</b> 往返</div>';
     return el;
   };
   lg.addTo(map);
@@ -426,6 +519,14 @@ function applyZoom(){
   tM.forEach(function(m){const t=m.getTooltip();const e=t&&t.getElement();if(e)e.style.display=cityMode?"none":"";});
   cityM.forEach(function(m){const t=m.getTooltip();const e=t&&t.getElement();if(e)e.style.display=cityMode?"":"none";});
   arrowM.forEach(function(m){const e=m.getElement(); if(e) e.style.display=showArrows?"":"none";});
+  termM.forEach(function(m){
+    const ic=iconFor(m._joint, cityMode);
+    const e=m.getElement();
+    if(!ic){ if(e) e.style.display="none"; return; }
+    m.setIcon(ic);
+    const e2=m.getElement();
+    if(e2) e2.style.display="";
+  });
 }
 map.on("zoomend",applyZoom);
 map.on("moveend",applyZoom);
