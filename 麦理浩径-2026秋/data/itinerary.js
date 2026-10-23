@@ -15,7 +15,7 @@ window.ITIN = {
     "营地无淋浴、无充电，野猪出没需密封食物"
   ],
   "stay": [["咸田湾营地", 1], ["昂平营地", 1], ["铅矿坳营地", 1]],
-  "mapCenter": [22.39, 114.20], "mapZoom": 11,
+  "mapCenter": [22.39, 114.20], "mapZoom": 11, "cityZoom": 12,
   "cities": [
     {"key": "SaiKung",  "name": "西贡东",       "color": "#e0605e"},
     {"key": "ShaTin",   "name": "沙田·马鞍山",  "color": "#6ea8fe"},
