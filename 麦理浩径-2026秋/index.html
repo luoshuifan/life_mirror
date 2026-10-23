@@ -436,7 +436,7 @@ const TSTYLE={airport:["&#9992;","#e8590c"],train:["&#128646;","#1c7ed6"],bus:["
       if(end&&typeof end.lat==="number") ports.push([end.lat,end.lon]);
     });
   });
-  if(ports.some(function(q){return kmOf([p.lat,p.lon],q)<0.4;})) return;
+  if(ports.some(function(q){return kmOf([p.lat,p.lon],q)<1.2;})) return;
   const s=TSTYLE[p.kind]||["&#9873;","#888"];
   const hit=nearestTrack([p.lat,p.lon]);
   const snapped=hit.km<=1.5;
@@ -489,7 +489,7 @@ const ACCESS=window.ACCESS||{depart:[],return:[]};
 const accessOpen={depart:false,return:false};
 const accessItems=[];
 const MODECH={plane:"飞",train:"铁",car:"车",boat:"船"};
-const ACCESSCOL="#8eb4d4";
+const ACCESSCOL="#1d4e89";
 function accessAt(ref){
   if(ref&&typeof ref.lat==="number") return [ref.lat,ref.lon];
   const name=typeof ref==="string"?ref:(ref&&(ref.place||ref.name));
@@ -511,17 +511,16 @@ function arcPts(a,b,bendKm){
   return pts;
 }
 function portIcon(ch,filled){
-  const bg=filled?"#243044":"rgba(18,22,28,.35)";
-  const c=filled?"#d6e6f5":ACCESSCOL;
-  return L.divIcon({className:"",iconSize:[26,26],iconAnchor:[13,13],
-    html:'<div style="width:26px;height:26px;border-radius:4px;background:'+bg+';border:2px solid '+ACCESSCOL+
-      ';color:'+c+';font-size:13px;font-weight:700;line-height:26px;text-align:center;'+
-      'box-shadow:0 0 0 2px rgba(0,0,0,.35)">'+ch+"</div>"});
+  const ring=filled?"0 0 0 2px #fff, 0 0 0 4px rgba(0,0,0,.35)":"0 0 0 2px rgba(0,0,0,.35)";
+  return L.divIcon({className:"",iconSize:[28,28],iconAnchor:[14,14],
+    html:'<div style="width:28px;height:28px;border-radius:4px;background:'+ACCESSCOL+';border:2px solid #fff;'+
+      'color:#fff;font-size:14px;font-weight:700;line-height:28px;text-align:center;box-shadow:'+ring+'">'+ch+"</div>"});
 }
 function modeIcon(ch,col){
-  return L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],
-    html:'<div style="width:22px;height:22px;border-radius:50%;background:#1b212b;border:2px solid '+col+
-      ';color:'+col+';font-size:11px;font-weight:700;line-height:22px;text-align:center">'+ch+"</div>"});
+  return L.divIcon({className:"",iconSize:[24,24],iconAnchor:[12,12],
+    html:'<div style="width:24px;height:24px;border-radius:50%;background:'+col+';border:2px solid #fff;'+
+      'color:#fff;font-size:12px;font-weight:700;line-height:24px;text-align:center;'+
+      'box-shadow:0 0 0 2px rgba(0,0,0,.35)">'+ch+"</div>"});
 }
 function routeLine(r, from, to){
   if(r.line&&r.line.length>1&&typeof r.line[0][0]==="number") return r.line;
@@ -535,14 +534,15 @@ function drawAccessSide(side,list){
     const to=accessAt(r.to);
     const pts=routeLine(r, from, to);
     if(!pts||pts.length<2) return;
-    const line=L.polyline(pts,{color:ACCESSCOL,weight:2.5,opacity:.7,dashArray:"7 7",interactive:true}).addTo(map);
+    const casing=L.polyline(pts,{color:"#ffffff",weight:8,opacity:.95,dashArray:"12 6",interactive:false}).addTo(map);
+    const line=L.polyline(pts,{color:ACCESSCOL,weight:4.5,opacity:1,dashArray:"12 6",interactive:true}).addTo(map);
     line.bindTooltip(r.label||"",{permanent:true,direction:"center",className:"plabel",opacity:1});
     const mid=pts[Math.floor(pts.length/2)];
-    const chip=L.marker(mid,{icon:modeIcon(MODECH[r.mode]||"车",ACCESSCOL),interactive:false,keyboard:false,zIndexOffset:800}).addTo(map);
+    const chip=L.marker(mid,{pane:"termPane",icon:modeIcon(MODECH[r.mode]||"车",ACCESSCOL),interactive:false,keyboard:false,zIndexOffset:800}).addTo(map);
     const port=side==="depart"?pts[0]:pts[pts.length-1];
     const key=side+"|"+port[0].toFixed(3)+"|"+port[1].toFixed(3);
     bounds.push(pts[0], pts[pts.length-1]);
-    r._line=line; r._chip=chip; r._side=side;
+    r._line=line; r._casing=casing; r._chip=chip; r._side=side;
     if(!ports[key]){
       const mk=L.marker(port,{pane:"termPane",icon:portIcon(side==="depart"?"出":"返",false),zIndexOffset:900}).addTo(map);
       mk.on("click",function(){
@@ -569,8 +569,9 @@ drawAccessSide("return", ACCESS.return||[]);
   const a=accessAt(r.from), b=accessAt(r.to);
   const use=pts||(a&&b?arcPts(a,b,0):null);
   if(!use||use.length<2) return;
-  const col=dayColor(r.day||"");
-  const line=L.polyline(use,{color:col,weight:3,opacity:.9,dashArray:"2 8"}).addTo(map);
+    const col=dayColor(r.day||"");
+    const casing=L.polyline(use,{color:"#ffffff",weight:7,opacity:.95,dashArray:"2 7",interactive:false}).addTo(map);
+    const line=L.polyline(use,{color:col,weight:4,opacity:1,dashArray:"2 7"}).addTo(map);
   const mid=use[Math.floor(use.length/2)];
   const chip=L.marker(mid,{icon:modeIcon(MODECH[r.mode]||"车",col),interactive:false,keyboard:false}).addTo(map);
   line.bindTooltip(r.label||"",{permanent:true,direction:"center",className:"plabel",opacity:1});
@@ -580,7 +581,11 @@ function showAccess(){
   ["depart","return"].forEach(function(side){
     const list=(ACCESS[side]||[]).filter(function(r){return r._line;});
     list.forEach(function(r){
-      r._line.setStyle({opacity:r.chosen?0.95:0.72, weight:r.chosen?4:2.5});
+      const z=map.getZoom();
+      const extra=z>=13?1.5:0;
+      const w=r.chosen?5:4.5;
+      r._line.setStyle({opacity:1, weight:w+extra, color:ACCESSCOL});
+      if(r._casing) r._casing.setStyle({opacity:.95, weight:w+extra+4});
       const path=r._line._path;
       if(path) path.style.pointerEvents="auto";
       const tip=r._line.getTooltip&&r._line.getTooltip();
@@ -625,7 +630,7 @@ L.control.layers(BASEMAPS,layers,{collapsed:window.innerWidth<600}).addTo(map);
       '<div><svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:6px"><rect x="1" y="1" width="10" height="10" rx="1.5" fill="#3a3114" stroke="#f5d76e" stroke-width="1.4"/></svg>全程起终</div>'+
       '<div><svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:6px"><circle cx="6" cy="6" r="4.2" fill="#1b212b" stroke="#f2f5f8" stroke-width="1.4"/></svg>分段起终</div>'+
       '<div><svg width="16" height="10" viewBox="0 0 18 18" style="vertical-align:middle;margin-right:6px"><path d="'+BI+'" fill="none" stroke="#e8ecf1" stroke-width="1.4" stroke-linejoin="round"/></svg>往返</div>'+
-      '<div><svg width="14" height="14" viewBox="0 0 14 14" style="vertical-align:middle;margin-right:6px"><rect x="1" y="1" width="12" height="12" rx="2" fill="none" stroke="#8eb4d4" stroke-width="1.6"/></svg>出发 / 返回</div>'+
+      '<div><svg width="22" height="8" viewBox="0 0 22 8" style="vertical-align:middle;margin-right:6px"><line x1="1" y1="4" x2="21" y2="4" stroke="#fff" stroke-width="5" stroke-dasharray="5 3"/><line x1="1" y1="4" x2="21" y2="4" stroke="#1d4e89" stroke-width="2.5" stroke-dasharray="5 3"/></svg>出发 / 返回</div>'+
       '<div style="color:#9aa5b1">飞 铁 车 船 · 虚线上的交通</div>';
     return el;
   };
